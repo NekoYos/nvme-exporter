@@ -1,0 +1,12 @@
+services:
+  nvme-exporter:
+    image: nekoyos/nvme-exporter:latest
+    container_name: nvme-exporter
+    restart: unless-stopped
+    privileged: true
+    read_only: true
+    ports:
+      - "9998:9998"
+    volumes:
+      - /dev:/dev
+      - /sys:/sys:ro

@@ -70,11 +70,53 @@ replaced with `_`. No prefix is used by default; an optional prefix can be set
 with `--metric-prefix=nvme_`.
 
 ```prometheus
-temperature{device="/dev/nvme0",model="PM981a NVMe Samsung 512GB",serial="S4GTNF0MA61796"} 49
-host_write_commands{device="/dev/nvme0",model="PM981a NVMe Samsung 512GB",serial="S4GTNF0MA61796"} 236864267
-warning_temp_time{device="/dev/nvme0",model="PM981a NVMe Samsung 512GB",serial="S4GTNF0MA61796"} 0
-temperature_sensor_2{device="/dev/nvme0",model="PM981a NVMe Samsung 512GB",serial="S4GTNF0MA61796"} 71
+temperature{device="/dev/nvme0",model="PM981a NVMe Samsung 512GB",serial="S4GTNF0MA00000"} 49
+host_write_commands{device="/dev/nvme0",model="PM981a NVMe Samsung 512GB",serial="S4GTNF0MA00000"} 236864267
+warning_temp_time{device="/dev/nvme0",model="PM981a NVMe Samsung 512GB",serial="S4GTNF0MA00000"} 0
+temperature_sensor_2{device="/dev/nvme0",model="PM981a NVMe Samsung 512GB",serial="S4GTNF0MA00000"} 71
 ```
+
+The serial number in this example is anonymized.
+
+Each SMART metric has the `device`, `model`, and `serial` labels. The following
+standard fields are present in the nvme-cli 2.16 SMART log used by this project:
+
+| Metric | Unit | Meaning |
+| --- | --- | --- |
+| `critical_warning` | Bit mask | Controller critical-warning flags; `0` means that no warning flag is set |
+| `temperature` | °C | Composite controller temperature |
+| `avail_spare` | Percent | Remaining available spare capacity |
+| `spare_thresh` | Percent | Available-spare warning threshold |
+| `percent_used` | Percent | Vendor estimate of NVM endurance consumed; values may exceed `100` |
+| `endurance_grp_critical_warning_summary` | Bit mask | Critical-warning summary for the associated endurance group |
+| `data_units_read` | NVMe data units | Data read by the host; one raw unit represents 1,000 × 512 bytes |
+| `data_units_written` | NVMe data units | Data written by the host; one raw unit represents 1,000 × 512 bytes |
+| `host_read_commands` | Commands | Host read commands completed |
+| `host_write_commands` | Commands | Host write commands completed |
+| `controller_busy_time` | Minutes | Time the controller was busy processing I/O commands |
+| `power_cycles` | Cycles | Controller power-cycle count |
+| `power_on_hours` | Hours | Controller power-on time |
+| `unsafe_shutdowns` | Events | Shutdowns without a prior shutdown notification |
+| `media_errors` | Errors | Unrecovered data-integrity errors detected by the controller |
+| `num_err_log_entries` | Entries | Lifetime number of Error Information Log entries |
+| `warning_temp_time` | Minutes | Time the composite temperature exceeded the warning threshold |
+| `critical_comp_time` | Minutes | Time the composite temperature exceeded the critical threshold |
+| `temperature_sensor_1` | °C | Temperature reported by sensor 1; omitted when the sensor is absent |
+| `temperature_sensor_2` | °C | Temperature reported by sensor 2; omitted when the sensor is absent |
+| `temperature_sensor_3` | °C | Temperature reported by sensor 3; omitted when the sensor is absent |
+| `temperature_sensor_4` | °C | Temperature reported by sensor 4; omitted when the sensor is absent |
+| `temperature_sensor_5` | °C | Temperature reported by sensor 5; omitted when the sensor is absent |
+| `temperature_sensor_6` | °C | Temperature reported by sensor 6; omitted when the sensor is absent |
+| `temperature_sensor_7` | °C | Temperature reported by sensor 7; omitted when the sensor is absent |
+| `temperature_sensor_8` | °C | Temperature reported by sensor 8; omitted when the sensor is absent |
+| `thm_temp1_trans_count` | Transitions | Transitions to Thermal Management Temperature 1 |
+| `thm_temp2_trans_count` | Transitions | Transitions to Thermal Management Temperature 2 |
+| `thm_temp1_total_time` | Seconds | Total time in Thermal Management Temperature 1 |
+| `thm_temp2_total_time` | Seconds | Total time in Thermal Management Temperature 2 |
+
+The list is not a hard-coded allowlist. Any additional numeric top-level field
+returned by nvme-cli, including vendor- or NVMe-version-specific fields, is
+exported automatically after metric-name normalization.
 
 The parser reads numeric JSON fields and numeric strings without converting them
 to float64, preserving large integer counters while generating the response.
@@ -103,6 +145,12 @@ Exporter metrics:
 | `nvme_exporter_devices` | Number of discovered NVMe controllers |
 | `nvme_exporter_device_scrape_success{device,model,serial}` | `1` when identity and SMART collection succeeded; otherwise `0` |
 | `nvme_exporter_scrape_duration_seconds` | Time spent collecting a scrape |
+
+Prometheus adds target labels such as `job` and `instance`; they do not come
+from this exporter. If the scrape target already has a `device` label,
+Prometheus normally preserves the exporter's `device` label as
+`exported_device` and uses the target's value for `device`. Relabeling may add
+other deployment-specific labels such as `site` or `device_type`.
 
 The `nvme_exporter_` prefix is reserved for exporter metrics. A failure on one
 drive does not hide data from healthy drives. When SMART collection fails, stale
@@ -157,6 +205,14 @@ Raw `data_units_*` values are shown without conversion to bytes. `controller_bus
 use minutes; `thm_temp1_total_time` and `thm_temp2_total_time` use seconds;
 `power_on_hours` uses hours. Missing values are not
 replaced with zeroes.
+
+## Privacy and security
+
+The `/metrics` response contains the real model and serial number of every
+discovered NVMe controller. Treat it as infrastructure inventory: do not expose
+the exporter directly to the public internet, and restrict access to a trusted
+monitoring network. Anonymize device identifiers before publishing metrics or
+logs.
 
 ## Options
 
@@ -248,3 +304,7 @@ to the device nodes.
 Command documentation:
 [nvme smart-log](https://github.com/linux-nvme/nvme-cli/blob/v2.16/Documentation/nvme-smart-log.txt),
 [nvme id-ctrl](https://github.com/linux-nvme/nvme-cli/blob/v2.16/Documentation/nvme-id-ctrl.txt).
+
+## License
+
+This project is open source and available under the [MIT License](LICENSE).

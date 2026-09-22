@@ -4,3 +4,10 @@ bin
 *.exe
 *.test
 coverage.out
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx

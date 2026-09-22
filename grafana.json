@@ -2,7 +2,7 @@
   "id": null,
   "uid": "nvme-exporter",
   "title": "NVMe Exporter — SMART",
-  "description": "NVMe SMART health, temperature, endurance, activity, errors, and all dynamic fields. For nekoyos/nvme-exporter:0.0.1.",
+  "description": "NVMe SMART health, temperature, endurance, activity, errors, and all dynamic fields. For the nvme-cli 2.16 JSON-based exporter. Temperatures are exported in Celsius.",
   "tags": [
     "nvme",
     "smart",
@@ -849,7 +849,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "${prefix:raw}percentage_used{job=~\"${job:regex}\",instance=~\"${instance:regex}\",device=~\"${device:regex}\",device!=\"\"}",
+          "expr": "${prefix:raw}percent_used{job=~\"${job:regex}\",instance=~\"${instance:regex}\",device=~\"${device:regex}\",device!=\"\"}",
           "refId": "A",
           "range": false,
           "instant": true,
@@ -916,7 +916,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "${prefix:raw}available_spare{job=~\"${job:regex}\",instance=~\"${instance:regex}\",device=~\"${device:regex}\",device!=\"\"}",
+          "expr": "${prefix:raw}avail_spare{job=~\"${job:regex}\",instance=~\"${instance:regex}\",device=~\"${device:regex}\",device!=\"\"}",
           "refId": "A",
           "range": false,
           "instant": true,
@@ -1235,7 +1235,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "${prefix:raw}available_spare{job=~\"${job:regex}\",instance=~\"${instance:regex}\",device=~\"${device:regex}\",device!=\"\"}",
+          "expr": "${prefix:raw}avail_spare{job=~\"${job:regex}\",instance=~\"${instance:regex}\",device=~\"${device:regex}\",device!=\"\"}",
           "refId": "A",
           "range": true,
           "instant": false,
@@ -1248,7 +1248,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "${prefix:raw}available_spare_threshold{job=~\"${job:regex}\",instance=~\"${instance:regex}\",device=~\"${device:regex}\",device!=\"\"}",
+          "expr": "${prefix:raw}spare_thresh{job=~\"${job:regex}\",instance=~\"${instance:regex}\",device=~\"${device:regex}\",device!=\"\"}",
           "refId": "B",
           "range": true,
           "instant": false,
@@ -1332,7 +1332,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "${prefix:raw}percentage_used{job=~\"${job:regex}\",instance=~\"${instance:regex}\",device=~\"${device:regex}\",device!=\"\"}",
+          "expr": "${prefix:raw}percent_used{job=~\"${job:regex}\",instance=~\"${instance:regex}\",device=~\"${device:regex}\",device!=\"\"}",
           "refId": "A",
           "range": true,
           "instant": false,
@@ -2011,7 +2011,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "${prefix:raw}warning_temperature_time{job=~\"${job:regex}\",instance=~\"${instance:regex}\",device=~\"${device:regex}\",device!=\"\"}",
+          "expr": "${prefix:raw}warning_temp_time{job=~\"${job:regex}\",instance=~\"${instance:regex}\",device=~\"${device:regex}\",device!=\"\"}",
           "refId": "A",
           "range": true,
           "instant": false,
@@ -2024,7 +2024,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "${prefix:raw}critical_composite_temperature_time{job=~\"${job:regex}\",instance=~\"${instance:regex}\",device=~\"${device:regex}\",device!=\"\"}",
+          "expr": "${prefix:raw}critical_comp_time{job=~\"${job:regex}\",instance=~\"${instance:regex}\",device=~\"${device:regex}\",device!=\"\"}",
           "refId": "B",
           "range": true,
           "instant": false,
@@ -2149,7 +2149,7 @@
       "id": 28,
       "type": "table",
       "title": "All SMART metrics — current values",
-      "description": "All fields from the selected NVMe controllers, including new firmware fields. Raw nvme-cli values and units. Exporter metrics are shown above.",
+      "description": "All fields from the selected NVMe controllers, including new firmware fields. JSON field names; temperatures in Celsius, other values in nvme-cli units. Exporter metrics are shown above.",
       "gridPos": {
         "x": 0,
         "y": 69,

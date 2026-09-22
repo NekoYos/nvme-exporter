@@ -101,7 +101,7 @@ func (e *exporter) collectDevice(ctx context.Context, name string) deviceResult 
 			return result
 		}
 	}
-	output, err := e.command(ctx, "smart-log", result.device, "--output-format=normal")
+	output, err := e.command(ctx, "smart-log", result.device, "--output-format=json")
 	if err != nil {
 		result.err = err
 		return result

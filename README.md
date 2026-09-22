@@ -1,12 +1,12 @@
 # NVMe Prometheus Exporter
 
 A Go exporter for Linux and Synology DSM. The Alpine-based image includes
-`nvme-cli`, so the utility does not need to be installed on the NAS. The Go
+`nvme-cli` pinned with `nvme-cli~2.16` (allowing Alpine package revisions), so the utility does not need to be installed on the NAS. The Go
 application has no third-party dependencies.
 
 On every `/metrics` request, the exporter enumerates controllers matching
 `/sys/class/nvme/nvmeN` and runs
-`nvme smart-log /dev/nvmeN --output-format=normal`. Namespaces and partitions do
+`nvme smart-log /dev/nvmeN --output-format=json`. Namespaces and partitions do
 not create duplicates because SMART data is collected at the controller level.
 The model and serial number are read from the `model` and `serial` sysfs files.
 When either value is missing or empty, the exporter falls back to
@@ -64,7 +64,7 @@ The current published image supports `linux/amd64`.
 
 ## Metrics
 
-SMART metric names are generated dynamically. Names are converted to lowercase,
+SMART metric names are generated dynamically from the top-level JSON keys. Names are converted to lowercase,
 and spaces or other characters that are invalid in Prometheus metric names are
 replaced with `_`. No prefix is used by default; an optional prefix can be set
 with `--metric-prefix=nvme_`.
@@ -72,22 +72,23 @@ with `--metric-prefix=nvme_`.
 ```prometheus
 temperature{device="/dev/nvme0",model="PM981a NVMe Samsung 512GB",serial="S4GTNF0MA61796"} 49
 host_write_commands{device="/dev/nvme0",model="PM981a NVMe Samsung 512GB",serial="S4GTNF0MA61796"} 236864267
-warning_temperature_time{device="/dev/nvme0",model="PM981a NVMe Samsung 512GB",serial="S4GTNF0MA61796"} 0
+warning_temp_time{device="/dev/nvme0",model="PM981a NVMe Samsung 512GB",serial="S4GTNF0MA61796"} 0
 temperature_sensor_2{device="/dev/nvme0",model="PM981a NVMe Samsung 512GB",serial="S4GTNF0MA61796"} 71
 ```
 
-The parser uses the first number in each value. Thousands separators, `%`, and
-unit suffixes are removed. For example, `236,864,267` becomes `236864267`,
-`49 C` becomes `49`, `49 °C (322 Kelvin)` becomes `49`, and
-`12,162,788 [6.22 TB]` becomes `12162788`.
+The parser reads numeric JSON fields and numeric strings without converting them
+to float64, preserving large integer counters while generating the response.
+Other value types and nonnumeric strings are skipped. Invalid JSON or a response
+without usable numeric fields causes collection for that device to fail.
 
-Signs and decimal points are preserved. Hexadecimal values such as `0x04` are
-converted to decimal. Fields without a numeric value are skipped.
+The `temperature` and `temperature_sensor_1` through `temperature_sensor_8`
+fields are converted from Kelvin to whole degrees Celsius by subtracting 273,
+matching nvme-cli's text presentation. A zero Kelvin value is treated as
+unreported and omitted. Sensors absent from JSON are not synthesized.
 
-Units remain exactly as reported by `nvme-cli`: percentages are not divided by
-100, and `data_units_*` values are not converted to bytes. Integer values are
-preserved without precision loss while the response is generated, although
-Prometheus itself stores numbers as float64.
+All other units remain as reported by nvme-cli: percentages are not divided by
+100, and `data_units_*` values are not converted to bytes. Prometheus itself
+stores numbers as float64.
 
 Dynamic SMART metrics use the Prometheus `untyped` type because the correct type
 of an arbitrary new field cannot be inferred reliably from its name. Duplicate
@@ -152,8 +153,9 @@ Leave **SMART prefix** empty with the default exporter configuration. Enter
 scrape interval, such as `60s`, in the Prometheus data source so the command-rate
 chart can calculate `$__rate_interval` correctly.
 
-Raw `data_units_*` values are shown without conversion to bytes. SMART duration
-fields use minutes, while `power_on_hours` uses hours. Missing values are not
+Raw `data_units_*` values are shown without conversion to bytes. `controller_busy_time`, `warning_temp_time`, and `critical_comp_time`
+use minutes; `thm_temp1_total_time` and `thm_temp2_total_time` use seconds;
+`power_on_hours` uses hours. Missing values are not
 replaced with zeroes.
 
 ## Options
@@ -179,6 +181,52 @@ serialized. Diagnostics are written to stderr and can be viewed with
 `docker logs nvme-exporter`. When changing the HTTP address or port, update the
 Compose `ports` mapping and Docker health check as well.
 
+## GitHub Actions and Docker Hub
+
+`.github/workflows/ci.yml` runs formatting checks, Go tests with the race
+detector, `go vet`, Docker builds, and container smoke tests on native
+`amd64` and `arm64` runners. Pull requests run these checks without Docker Hub
+credentials. `.github/workflows/publish.yml` calls the same checks before
+publishing a multi-platform image to `nekoyos/nvme-exporter`.
+
+Configure these repository secrets under **Settings > Secrets and variables >
+Actions**:
+
+- `DOCKERHUB_USERNAME`: the Docker Hub account with write access to the repository.
+- `DOCKERHUB_TOKEN`: a Docker Hub access token with read/write access.
+
+The Docker Hub repository must exist. Native ARM runners must be available to
+the GitHub repository.
+
+| Event | Published tags |
+| --- | --- |
+| Pull request | None |
+| Push to `main` | `edge`, `sha-<full-commit>` |
+| Push tag `v1.2.3` | `1.2.3`, `1.2`, `1`, `latest` |
+| Push tag `v0.2.3` | `0.2.3`, `0.2`, `latest` (no `0` alias) |
+
+Only stable `vX.Y.Z` tags are accepted; prereleases are rejected. Release tags
+should point to reviewed commits from `main`. Publish releases in version order:
+publishing or rerunning an older release also moves `latest` and its rolling
+version aliases. Treat version tags as immutable and use an image digest when
+deployments require immutable content.
+
+Publication includes OCI labels, SBOM and provenance attestations. BuildKit
+caches are reused between checks and publication. Publishing performs a
+multi-platform build after the per-platform smoke checks; Dockerfile tests also
+run during this build when their layer is not cached.
+
+For example, after merging a release commit into `main`:
+
+```sh
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+Pushing these workflow files activates automation; no manual Docker Hub push is
+needed. Protect `main` and release tags with repository rulesets to restrict who
+can publish. Actions are pinned by commit SHA and need periodic updates.
+
 ## Development
 
 Go 1.26 or newer is required. The image build runs tests before compilation.
@@ -191,10 +239,10 @@ docker build -t nvme-exporter:local .
 docker run --rm --entrypoint /bin/sh -v "$PWD:/fixtures:ro" nvme-exporter:local /fixtures/testdata/smoke-test.sh
 ```
 
-The tests use the provided SMART output and simulated controllers. They cover
-dynamic fields, thousands separators, unit suffixes, hexadecimal and 128-bit
-values, partition exclusion, device addition and removal, labels, failures, and
-timeouts. Testing a physical NVMe device requires Linux or Synology with access
+The tests use a representative nvme-cli 2.16 JSON fixture and simulated
+controllers. They cover dynamic fields, Kelvin conversion, missing sensors,
+128-bit counters, malformed JSON, partition exclusion, device addition and
+removal, labels, failures, and timeouts. Testing a physical NVMe device requires Linux or Synology with access
 to the device nodes.
 
 Command documentation:

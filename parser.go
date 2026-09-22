@@ -1,7 +1,7 @@
 package main
 
 import (
-	"bufio"
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"regexp"
@@ -9,8 +9,9 @@ import (
 )
 
 var (
-	invalidName  = regexp.MustCompile(`[^a-z0-9_]+`)
-	numericValue = regexp.MustCompile(`^[+-]?(?:0[xX][0-9a-fA-F]+|[0-9][0-9,]*(?:\.[0-9]+)?)`)
+	invalidName     = regexp.MustCompile(`[^a-z0-9_]+`)
+	numericValue    = regexp.MustCompile(`^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$`)
+	temperatureName = regexp.MustCompile(`^temperature_sensor_[1-8]$`)
 )
 
 func metricName(name string) string {
@@ -21,40 +22,24 @@ func metricName(name string) string {
 	return name
 }
 
-// Parse only the leading number: modern nvme-cli can append both human-readable
-// byte counts and an alternative temperature unit to the same value.
+// Keep JSON numbers as text so 128-bit counters never pass through float64.
 func parseNumber(value string) (string, bool) {
-	token := numericValue.FindString(strings.TrimSpace(value))
-	if token == "" {
-		return "", false
-	}
-	token = strings.ReplaceAll(token, ",", "")
-	if strings.ContainsAny(token, "xX") {
-		number, ok := new(big.Int).SetString(token, 0)
-		if !ok {
-			return "", false
-		}
-		return number.String(), true
-	}
-	// Normalize leading zeroes without losing precision in 128-bit SMART counters.
-	if !strings.Contains(token, ".") {
-		number, ok := new(big.Int).SetString(token, 10)
-		if !ok {
-			return "", false
-		}
-		return number.String(), true
-	}
-	return token, true
+	return value, numericValue.MatchString(value)
 }
 
 func parseSMART(output string) (map[string]string, error) {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(output), &fields); err != nil {
+		return nil, fmt.Errorf("decode smart-log JSON: %w", err)
+	}
 	metrics := make(map[string]string)
-	scanner := bufio.NewScanner(strings.NewReader(output))
-	scanner.Buffer(make([]byte, 4096), 1024*1024)
-	for scanner.Scan() {
-		key, value, found := strings.Cut(scanner.Text(), ":")
-		if !found || strings.HasPrefix(strings.ToLower(strings.TrimSpace(key)), "smart log for") {
-			continue
+	for key, raw := range fields {
+		value := strings.TrimSpace(string(raw))
+		// Accept numeric strings as well as JSON numbers for large counters.
+		if strings.HasPrefix(value, `"`) {
+			if err := json.Unmarshal(raw, &value); err != nil {
+				return nil, fmt.Errorf("decode SMART field %q: %w", key, err)
+			}
 		}
 		value, ok := parseNumber(value)
 		if !ok {
@@ -67,10 +52,19 @@ func parseSMART(output string) (map[string]string, error) {
 		if _, exists := metrics[name]; exists {
 			return nil, fmt.Errorf("duplicate SMART metric after normalization: %s", name)
 		}
+		if key == "temperature" || temperatureName.MatchString(key) {
+			kelvin, ok := new(big.Int).SetString(value, 10)
+			if !ok || kelvin.Sign() < 0 || kelvin.Cmp(big.NewInt(65535)) > 0 {
+				return nil, fmt.Errorf("invalid Kelvin temperature for %s: %s", key, value)
+			}
+			// Zero means a temperature is not reported, not absolute zero.
+			if kelvin.Sign() == 0 {
+				continue
+			}
+			// Match nvme-cli's whole-degree Celsius presentation.
+			value = kelvin.Sub(kelvin, big.NewInt(273)).String()
+		}
 		metrics[name] = value
-	}
-	if err := scanner.Err(); err != nil {
-		return nil, err
 	}
 	if len(metrics) == 0 {
 		return nil, fmt.Errorf("nvme smart-log returned no numeric fields")

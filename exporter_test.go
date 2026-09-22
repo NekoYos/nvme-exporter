@@ -43,13 +43,13 @@ func TestDiscoveryMetricsAndHotplug(t *testing.T) {
 	var mu sync.Mutex
 	calls := make(map[string]int)
 	e := testExporter(t, func(ctx context.Context, args ...string) ([]byte, error) {
-		if args[0] != "smart-log" || args[2] != "--output-format=normal" {
+		if args[0] != "smart-log" || args[2] != "--output-format=json" {
 			return nil, fmt.Errorf("unexpected command: %v", args)
 		}
 		mu.Lock()
 		calls[args[1]]++
 		mu.Unlock()
-		return []byte("Warning Temperature Time : 0\nhost_write_commands : 236,864,267\n"), nil
+		return []byte(`{"warning_temp_time":0,"host_write_commands":236864267}`), nil
 	})
 	for _, name := range []string{"nvme0", "nvme1", "nvme0n1", "nvme0n1p1", "nvme1n1p1", "notnvme"} {
 		addController(t, e.sysfsPath, name)
@@ -61,7 +61,7 @@ func TestDiscoveryMetricsAndHotplug(t *testing.T) {
 	for _, want := range []string{
 		"nvme_exporter_devices 2\n", "nvme_exporter_discovery_success 1\n",
 		`host_write_commands{device="/dev/nvme0",model="PM981a NVMe Samsung 512GB",serial="SN-nvme0"} 236864267`,
-		`warning_temperature_time{device="/dev/nvme1",model="PM981a NVMe Samsung 512GB",serial="SN-nvme1"} 0`,
+		`warning_temp_time{device="/dev/nvme1",model="PM981a NVMe Samsung 512GB",serial="SN-nvme1"} 0`,
 	} {
 		if !strings.Contains(w.Body.String(), want) {
 			t.Errorf("missing %q in %s", want, w.Body.String())
@@ -86,7 +86,7 @@ func TestIdentityFallbackAndLabelEscaping(t *testing.T) {
 		if args[0] == "id-ctrl" {
 			return []byte(`{"mn":" Model \"quoted\" ","sn":"a\\b\nc"}`), nil
 		}
-		return []byte("temperature : 49 C"), nil
+		return []byte(`{"temperature":322}`), nil
 	})
 	if err := os.Mkdir(filepath.Join(e.sysfsPath, "nvme0"), 0755); err != nil {
 		t.Fatal(err)
@@ -104,7 +104,7 @@ func TestDeviceFailureDoesNotHideHealthyDevice(t *testing.T) {
 		if args[1] == "/dev/nvme0" {
 			return nil, fmt.Errorf("permission denied")
 		}
-		return []byte("temperature : 49 C"), nil
+		return []byte(`{"temperature":322}`), nil
 	})
 	addController(t, e.sysfsPath, "nvme0")
 	addController(t, e.sysfsPath, "nvme1")
@@ -150,7 +150,7 @@ func TestTimeoutAndConcurrentScrapes(t *testing.T) {
 }
 
 func TestReservedMetricAndMalformedSMART(t *testing.T) {
-	for _, output := range []string{"nvme exporter devices: 1", "no SMART data"} {
+	for _, output := range []string{`{"nvme exporter devices":1}`, "no SMART data", `{"temperature":322,}`} {
 		e := testExporter(t, func(context.Context, ...string) ([]byte, error) { return []byte(output), nil })
 		addController(t, e.sysfsPath, "nvme0")
 		body := scrape(e).Body.String()

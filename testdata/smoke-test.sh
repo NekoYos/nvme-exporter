@@ -3,6 +3,7 @@
 set -eu
 
 nvme version
+nvme version | grep -Eq '^nvme version 2\.16([[:space:]]|$)'
 mkdir -p /tmp/nvme-fixture/nvme0 /tmp/nvme-fixture/nvme1
 for device in nvme0 nvme1; do
   printf 'PM981a NVMe Samsung 512GB\n' > "/tmp/nvme-fixture/$device/model"
@@ -12,9 +13,9 @@ cat > /tmp/fake-nvme <<'EOF'
 #!/bin/sh
 set -eu
 test "$1" = smart-log
-test "$3" = --output-format=normal
+test "$3" = --output-format=json
 test "$LC_ALL" = C
-cat /fixtures/testdata/smart-log.txt
+cat /fixtures/testdata/smart-log.json
 EOF
 chmod +x /tmp/fake-nvme
 nvme-exporter --sysfs-path=/tmp/nvme-fixture --nvme-path=/tmp/fake-nvme &
